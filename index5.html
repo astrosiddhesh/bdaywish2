@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scratch to Read</title>
+    <style>
+        /* Global Styles */
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1A1A2E; /* Dark Navy */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', sans-serif;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #container {
+            position: relative;
+            width: 90vw;
+            max-width: 800px;
+            height: 80vh;
+            max-height: 600px;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+            background: #16213E; /* Deep Blue */
+        }
+
+        #message-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0F4C75, #3282B8); /* Ocean Blue Gradient */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 1;
+        }
+
+        #message-text {
+            font-size: 24px;
+            line-height: 1.6;
+            text-align: center;
+            white-space: pre-wrap;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            pointer-events: none;
+            font-weight: 500;
+        }
+
+        #scratch-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            touch-action: none;
+        }
+
+        #instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            color: white;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            z-index: 3;
+            opacity: 1;
+            transition: opacity 1s ease;
+        }
+
+        .scratch-icon {
+            display: block;
+            margin: 15px auto;
+            width: 50px;
+            height: 50px;
+            animation: scratch 2s infinite;
+        }
+
+        @keyframes scratch {
+            0% { transform: translateX(-10px) rotate(-5deg); }
+            50% { transform: translateX(10px) rotate(5deg); }
+            100% { transform: translateX(-10px) rotate(-5deg); }
+        }
+
+        #confetti-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 4;
+        }
+
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            opacity: 0.8;
+            pointer-events: none;
+        }
+
+        .reset-button {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            padding: 10px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 5;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+
+        .reset-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .progress-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.5);
+            width: 0%;
+            transition: width 0.2s ease;
+            z-index: 5;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="message-layer">
+            <pre id="message-text">Happy Birthday, Kitty 🌻🌈
+
+Since you've been ghosting your art,
+I figured I'd give you no excuse to ignore it anymore—
+here are some colors to bring that 'dead' account back to life.
+No pressure, just a little nudge.
+Hope you have a great day, and maybe,
+just maybe, we'll see some new masterpieces soon.</pre>
+        </div>
+        <canvas id="scratch-layer"></canvas>
+        <div id="instructions">
+            <span class="scratch-icon">✋</span>
+            Scratch to Read!
+        </div>
+        <div id="confetti-container"></div>
+        <button class="reset-button" id="reset-button">Reset</button>
+        <div class="progress-bar" id="progress-bar"></div>
+    </div>
+
+    <script>
+        // Setup variables
+        const canvas = document.getElementById('scratch-layer');
+        const ctx = canvas.getContext('2d');
+        const messageText = document.getElementById('message-text');
+        const instructions = document.getElementById('instructions');
+        const progressBar = document.getElementById('progress-bar');
+        const resetButton = document.getElementById('reset-button');
+        const confettiContainer = document.getElementById('confetti-container');
+
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let scratchedPixels = 0;
+        let totalPixels = 0;
+        let revealThreshold = 0.35; // Reveal message when 35% is scratched
+        let revealStarted = false;
+        let confettiActive = false;
+
+        // Color palette for scratch surface
+        const colors = [
+            '#FF6B6B', // Coral
+            '#FFD166', // Yellow
+            '#45B8AC', // Teal
+            '#4ECDC4', // Light Teal
+            '#A8DADC'  // Light Blue
+        ];
+
+        // Set up canvas
+        function setupCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = `${rect.width}px`;
+            canvas.style.height = `${rect.height}px`;
+
+            ctx.scale(dpr, dpr);
+            totalPixels = rect.width * rect.height;
+
+            // Reset scratch tracking
+            scratchedPixels = 0;
+            revealStarted = false;
+
+            // Draw colorful scratch surface
+            drawScratchSurface();
+
+            // Reset message opacity
+            messageText.style.opacity = '0';
+            instructions.style.opacity = '1';
+            progressBar.style.width = '0%';
+        }
+
+        // Draw the initial scratch surface
+        function drawScratchSurface() {
+            const rect = canvas.getBoundingClientRect();
+
+            // Create colorful background
+            ctx.fillStyle = '#111111';
+            ctx.fillRect(0, 0, rect.width, rect.height);
+
+            // Draw colorful patterns
+            drawColorfulPattern(rect);
+
+            // Add a hint message
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.font = '20px "Segoe UI", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Scratch anywhere!', rect.width / 2, rect.height / 2 + 50);
+
+            // Add sparkle effects
+            for (let i = 0; i < 30; i++) {
+                drawSparkle(
+                    Math.random() * rect.width,
+                    Math.random() * rect.height,
+                    Math.random() * 3 + 1
+                );
+            }
+        }
+
+        // Draw colorful pattern on scratch surface
+        function drawColorfulPattern(rect) {
+            // Draw colored waves
+            for (let y = 0; y < rect.height; y += 20) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+
+                for (let x = 0; x < rect.width; x += 20) {
+                    const waveHeight = 5 * Math.sin((x + y) / 20);
+                    ctx.lineTo(x, y + waveHeight);
+                }
+
+                ctx.strokeStyle = colors[Math.floor(Math.random() * colors.length)];
+                ctx.lineWidth = 10;
+                ctx.stroke();
+            }
+
+            // Add textures and shapes
+            for (let i = 0; i < 50; i++) {
+                const x = Math.random() * rect.width;
+                const y = Math.random() * rect.height;
+                const size = Math.random() * 30 + 10;
+
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)] + '60'; // Add transparency
+                ctx.fill();
+            }
+
+            // Add brush strokes
+            for (let i = 0; i < 20; i++) {
+                const startX = Math.random() * rect.width;
+                const startY = Math.random() * rect.height;
+                const length = Math.random() * 100 + 50;
+                const angle = Math.random() * Math.PI * 2;
+
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(
+                    startX + Math.cos(angle) * length,
+                    startY + Math.sin(angle) * length
+                );
+                ctx.strokeStyle = colors[Math.floor(Math.random() * colors.length)];
+                ctx.lineWidth = Math.random() * 8 + 2;
+                ctx.stroke();
+            }
+        }
+
+        // Draw sparkle effect
+        function drawSparkle(x, y, size) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(Math.random() * Math.PI * 2);
+
+            const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 5);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.3)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            // Draw glow
+            ctx.beginPath();
+            ctx.arc(0, 0, size * 5, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // Draw lines
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = size / 2;
+
+            for (let i = 0; i < 4; i++) {
+                const angle = i * (Math.PI / 2);
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(Math.cos(angle) * size * 8, Math.sin(angle) * size * 8);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        // Scratch function to reveal message
+        function scratch(x, y, radius = 20) {
+            ctx.globalCompositeOperation = 'destination-out';
+
+            // Draw brush effect
+            const glowSize = radius * 1.5;
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowSize);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(x, y, glowSize, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Calculate scratched area (approximately)
+            const pixelsInCircle = Math.PI * radius * radius;
+            scratchedPixels += pixelsInCircle;
+
+            // Cap max scratched pixels to avoid issues
+            if (scratchedPixels > totalPixels) {
+                scratchedPixels = totalPixels;
+            }
+
+            // Update progress bar
+            const percentScratched = (scratchedPixels / totalPixels);
+            progressBar.style.width = `${percentScratched * 100}%`;
+
+            // Gradually reveal the message as user scratches
+            if (percentScratched > 0.05 && !revealStarted) {
+                revealStarted = true;
+                fadeInMessage();
+                fadeOutInstructions();
+            }
+
+            // Celebrate when enough is scratched
+            if (percentScratched > revealThreshold && !confettiActive) {
+                createConfetti();
+                confettiActive = true;
+            }
+
+            // Reset composite operation
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // Fade in message gradually
+        function fadeInMessage() {
+            let opacity = 0;
+            const interval = setInterval(() => {
+                opacity += 0.02;
+                if (opacity >= 1) {
+                    opacity = 1;
+                    clearInterval(interval);
+                }
+                messageText.style.opacity = opacity;
+            }, 50);
+        }
+
+        // Fade out instructions
+        function fadeOutInstructions() {
+            let opacity = 1;
+            const interval = setInterval(() => {
+                opacity -= 0.05;
+                if (opacity <= 0) {
+                    opacity = 0;
+                    clearInterval(interval);
+                }
+                instructions.style.opacity = opacity;
+            }, 50);
+        }
+
+        // Create confetti celebration
+        function createConfetti() {
+            // Clear any existing confetti
+            confettiContainer.innerHTML = '';
+
+            // Create new confetti pieces
+            for (let i = 0; i < 100; i++) {
+                setTimeout(() => {
+                    const confetti = document.createElement('div');
+                    confetti.className = 'confetti';
+
+                    // Random properties
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+                    const size = Math.random() * 10 + 5;
+                    const shape = Math.random() > 0.5 ? '50%' : '0%';
+
+                    // Set styles
+                    confetti.style.backgroundColor = color;
+                    confetti.style.width = `${size}px`;
+                    confetti.style.height = `${size}px`;
+                    confetti.style.borderRadius = shape;
+                    confetti.style.left = `${Math.random() * 100}%`;
+                    confetti.style.top = '-20px';
+
+                    // Add to container
+                    confettiContainer.appendChild(confetti);
+
+                    // Animate
+                    const duration = Math.random() * 3000 + 2000;
+                    const horizontalMovement = Math.random() * 200 - 100;
+
+                    confetti.animate([
+                        {
+                            transform: 'translateY(0) translateX(0) rotate(0deg)',
+                            opacity: 1
+                        },
+                        {
+                            transform: `translateY(${window.innerHeight}px) translateX(${horizontalMovement}px) rotate(${Math.random() * 360}deg)`,
+                            opacity: 0
+                        }
+                    ], {
+                        duration: duration,
+                        easing: 'cubic-bezier(0.25, 1, 0.5, 1)'
+                    }).onfinish = () => confetti.remove();
+                }, Math.random() * 1000);
+            }
+        }
+
+        // Event listeners for mouse/touch interactions
+        function startDrawing(e) {
+            isDrawing = true;
+            const pos = getPosition(e);
+            lastX = pos.x;
+            lastY = pos.y;
+            scratch(lastX, lastY);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const pos = getPosition(e);
+
+            // Distance between points
+            const dx = pos.x - lastX;
+            const dy = pos.y - lastY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // If distance is too large, interpolate points
+            if (distance > 5) {
+                const steps = Math.floor(distance / 5);
+                for (let i = 1; i <= steps; i++) {
+                    const x = lastX + dx * (i / steps);
+                    const y = lastY + dy * (i / steps);
+                    scratch(x, y);
+                }
+            } else {
+                scratch(pos.x, pos.y);
+            }
+
+            lastX = pos.x;
+            lastY = pos.y;
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        // Get position for both mouse and touch events
+        function getPosition(e) {
+            let x, y;
+            const rect = canvas.getBoundingClientRect();
+
+            // Handle touch events
+            if (e.touches) {
+                x = e.touches[0].clientX - rect.left;
+                y = e.touches[0].clientY - rect.top;
+            } else { // Handle mouse events
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+
+            return { x, y };
+        }
+
+        // Reset the scratch card
+        function resetScratchCard() {
+            setupCanvas();
+            confettiActive = false;
+            confettiContainer.innerHTML = '';
+        }
+
+        // Initialize
+        function init() {
+            // Set up initial canvas
+            setupCanvas();
+
+            // Event listeners
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseleave', stopDrawing);
+
+            // Touch events
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                startDrawing(e);
+            });
+            canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                draw(e);
+            });
+            canvas.addEventListener('touchend', stopDrawing);
+
+            // Reset button
+            resetButton.addEventListener('click', resetScratchCard);
+
+            // Handle window resize
+            window.addEventListener('resize', debounce(setupCanvas, 250));
+        }
+
+        // Debounce function for resize
+        function debounce(func, wait) {
+            let timeout;
+            return function() {
+                clearTimeout(timeout);
+                timeout = setTimeout(func, wait);
+            };
+        }
+
+        // Start everything
+        init();
+    </script>
+</body>
+</html>
